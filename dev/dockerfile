@@ -1,0 +1,8 @@
+FROM mochrira/dev:lite-latest
+
+USER root
+RUN apk update && apk add --no-cache git
+
+USER devuser
+WORKDIR /workspace
+ENTRYPOINT [ "sudo", "/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf" ]

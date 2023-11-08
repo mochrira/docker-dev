@@ -1,0 +1,13 @@
+version: '3'
+name: docker_dev
+services:
+  backend:
+    container_name: docker_dev
+    image: mochrira/dev:lite-latest
+    build: 
+      context: ./
+      dockerfile: dockerfile
+    volumes:
+      - ./examples:/var/www/html
+    ports:
+      - 9000:80

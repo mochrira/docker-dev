@@ -1,0 +1,36 @@
+FROM php:7.4.33-fpm-alpine
+
+RUN apk update \
+    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy supervisor icu-dev libzip-dev libpng-dev \
+    && docker-php-ext-install mysqli intl gd zip
+
+RUN addgroup -g 1000 devuser && adduser -G devuser -u 1000 -D devuser \
+    && mkdir -p /etc/sudoers.d \
+    && echo "devuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/devuser \
+    && chmod 0440 /etc/sudoers.d/devuser
+
+RUN curl -fsSL 'https://github.com/composer/getcomposer.org/raw/main/web/download/2.6.2/composer.phar' -o /tmp/composer.phar \
+    && echo "88c84d4a53fcf1c27d6762e1d5d6b70d57c6dc9d2e2314fd09dbf86bf61e1aef  /tmp/composer.phar" | sha256sum -c \
+    && mv /tmp/composer.phar /usr/local/bin/composer \
+    && chmod +x /usr/local/bin/composer
+
+RUN sed -i "s/user = www-data/user = devuser/g" /usr/local/etc/php-fpm.d/www.conf \
+    && sed -i "s/group = www-data/group = devuser/g" /usr/local/etc/php-fpm.d/www.conf \
+    && sed -i 's/;pidfile/pidfile/g' /etc/supervisord.conf \
+    && sed -i 's/;user=chrism/user=root/g' /etc/supervisord.conf \
+    && mv /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini \
+    && rm -f /var/log/apache2/error.log \
+    && rm -f /var/log/apache2/access.log \
+    && ln -s /dev/stdout /var/log/apache2/access.log \
+    && ln -s /dev/stderr /var/log/apache2/error.log
+
+RUN npm install -g @angular/cli@15.2 \
+    && npm cache clean --force \
+    && npm cache verify
+
+COPY httpd.conf /etc/apache2/httpd.conf
+COPY supervisor.ini /etc/supervisor.d/apache.ini
+
+USER devuser
+WORKDIR /workspace
+ENTRYPOINT [ "sudo", "/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf" ]
