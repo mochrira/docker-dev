@@ -1,0 +1,15 @@
+name: docker_dev
+services:
+  backend:
+    container_name: docker_dev_latest
+    image: mochrira/dev:latest
+    build: 
+      context: ./
+      dockerfile: dockerfile
+    environment:
+      - NG_INSTALL=NO
+      - NG_VERSION=17
+    volumes:
+      - ./examples:/workspace
+    ports:
+      - 8080:80
