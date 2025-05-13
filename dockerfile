@@ -1,8 +1,8 @@
-FROM php:fpm-alpine3.20
+FROM php:8.4-fpm-alpine3.20
 
 RUN apk update \
-    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy supervisor icu-dev libzip-dev libpng-dev busybox-suid git shadow \
-    && docker-php-ext-install mysqli pdo pdo_mysql intl gd zip
+    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy supervisor icu-dev libzip-dev libpng-dev busybox-suid git shadow linux-headers \
+    && docker-php-ext-install mysqli pdo pdo_mysql intl gd zip sockets pcntl
 
 RUN addgroup -g 1000 devuser && adduser -G devuser -u 1000 -D devuser \
     && mkdir -p /etc/sudoers.d \
