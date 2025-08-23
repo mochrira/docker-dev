@@ -1,4 +1,4 @@
-FROM php:8.4-fpm-alpine3.20
+FROM php:fpm-alpine3.21
 
 RUN apk update \
     && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy supervisor icu-dev libzip-dev libpng-dev busybox-suid git shadow linux-headers \
