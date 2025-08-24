@@ -42,6 +42,8 @@ RUN cd /tmp && wget https://github.com/jvoisin/snuffleupagus/archive/refs/tags/v
     && rm -r /var/cache/apk/* \
     && mkdir -p /usr/local/etc/snuffleupagus
 
+RUN rm /etc/apache2/conf.d/ssl.conf
+
 COPY httpd.conf /etc/apache2/httpd.conf
 COPY supervisor.ini /etc/supervisor.d/default.ini
 COPY snuffleupagus.ini /usr/local/etc/php/conf.d/docker-php-ext-snuffleupagus.ini
