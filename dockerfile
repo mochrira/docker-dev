@@ -1,7 +1,7 @@
 FROM php:fpm-alpine3.21
 
 RUN apk update \
-    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy supervisor icu-dev libzip-dev libpng-dev busybox-suid git shadow \
+    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy apache2-ssl supervisor icu-dev libzip-dev libpng-dev busybox-suid git shadow linux-headers \
     && docker-php-ext-install mysqli pdo pdo_mysql intl gd zip
 
 RUN addgroup -g 1000 devuser && adduser -G devuser -u 1000 -D devuser \
