@@ -10,6 +10,7 @@ services:
       - NG_INSTALL=NO
       - NG_VERSION=17
     volumes:
-      - ./examples:/workspace
+      - ./examples/workspace:/workspace
+      - ./examples/before_startup.sh:/before_startup.sh
     ports:
       - 8080:80
