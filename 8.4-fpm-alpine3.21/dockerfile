@@ -9,10 +9,47 @@ RUN addgroup -g 1000 devuser && adduser -G devuser -u 1000 -D devuser \
     && echo "devuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/devuser \
     && chmod 0440 /etc/sudoers.d/devuser
 
-RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
-    && apk add imagemagick imagemagick-dev libgomp jpeg-dev \
-    && pecl install imagick \
+# Install packages for ImageMagick with WebP and AVIF support
+RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS gcc g++ make libtool autoconf cmake \
+    && apk add --no-cache libwebp-dev libwebp libjpeg-turbo-dev libpng-dev tiff-dev giflib-dev \
+        freetype-dev fontconfig-dev libxml2-dev zlib-dev bzip2-dev xz-dev libgomp \
+        libheif-dev libheif \
+    && cd /tmp \
+    && wget https://github.com/ImageMagick/ImageMagick/archive/7.1.1-39.tar.gz \
+    && tar xzf 7.1.1-39.tar.gz \
+    && cd ImageMagick-7.1.1-39 \
+    && ./configure \
+        --prefix=/usr/local \
+        --enable-shared \
+        --disable-static \
+        --with-webp=yes \
+        --with-heic=yes \
+        --with-jpeg=yes \
+        --with-png=yes \
+        --with-tiff=yes \
+        --with-freetype=yes \
+        --with-fontconfig=yes \
+        --with-xml=yes \
+        --with-bzlib=yes \
+        --with-lzma=yes \
+        --without-perl \
+        --disable-docs \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig /usr/local/lib \
+    && cd /tmp \
+    && rm -rf ImageMagick-7.1.1-39* \
+    && cd /tmp \
+    && wget https://github.com/Imagick/imagick/archive/refs/heads/master.zip \
+    && unzip master.zip \
+    && cd imagick-master \
+    && phpize \
+    && ./configure --with-imagick=/usr/local \
+    && make -j$(nproc) \
+    && make install \
     && docker-php-ext-enable imagick \
+    && cd /tmp \
+    && rm -rf imagick-master* \
     && rm -rf /tmp/pear \
     && apk del .build-deps
 
