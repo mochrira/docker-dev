@@ -1,29 +1,37 @@
-FROM php:fpm-alpine3.21
+FROM php:8.4-fpm-alpine3.21
 
-RUN apk update \
-    && apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy apache2-ssl supervisor \
-        icu-dev libzip-dev libpng-dev libwebp-dev libjpeg-turbo-dev freetype-dev libavif-dev \
-        busybox-suid git shadow linux-headers \
-    && docker-php-ext-configure gd --with-webp --with-avif --with-jpeg --with-freetype \
-    && docker-php-ext-install mysqli pdo pdo_mysql intl gd zip sockets pcntl
+# Runtime software and tools
+RUN apk add --no-cache nodejs npm zip sudo apache2 apache2-proxy apache2-ssl supervisor
 
 RUN addgroup -g 1000 devuser && adduser -G devuser -u 1000 -D devuser \
     && mkdir -p /etc/sudoers.d \
     && echo "devuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/devuser \
     && chmod 0440 /etc/sudoers.d/devuser
 
-# Install packages for ImageMagick with WebP and AVIF support
-RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS gcc g++ make libtool autoconf cmake \
-    && apk add --no-cache libwebp libgomp tiff-dev giflib-dev \
-        fontconfig-dev libxml2-dev zlib-dev bzip2-dev xz-dev \
-        libheif-dev libheif
-
-# Compile ImageMagick library
-RUN cd /tmp \
-    && wget https://github.com/ImageMagick/ImageMagick/archive/7.1.1-39.tar.gz \
-    && tar xzf 7.1.1-39.tar.gz \
-    && cd ImageMagick-7.1.1-39 \
-    && ./configure \
+# Build time packages and tools
+# Everything that compiles (PHP extensions, ImageMagick, imagick, Snuffleupagus)
+# lives in this single layer: `apk del` only reclaims space when it runs in the
+# same RUN that installed the packages, so the build-only packages must never
+# leave this RUN.
+RUN set -eux; \
+    apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+        icu-dev libzip-dev libpng-dev libwebp-dev libjpeg-turbo-dev freetype-dev libavif-dev \
+        busybox-suid shadow linux-headers libpq-dev tiff-dev giflib-dev \
+        fontconfig-dev libxml2-dev zlib-dev bzip2-dev xz-dev libheif-dev \
+        coreutils; \
+    apk add --no-cache \
+        libpng libavif libjpeg-turbo tiff giflib freetype fontconfig libpq libzip \
+        libwebp libwebpmux libwebpdemux libgomp libheif libstdc++ icu-libs bzip2; \
+    \
+    docker-php-ext-configure gd --with-webp --with-avif --with-jpeg --with-freetype; \
+    docker-php-ext-install -j"$(nproc)" mysqli pdo pdo_mysql intl gd zip sockets pcntl pgsql; \
+    \
+    cd /tmp; \
+    wget https://github.com/ImageMagick/ImageMagick/archive/7.1.1-39.tar.gz; \
+    tar xzf 7.1.1-39.tar.gz; \
+    cd ImageMagick-7.1.1-39; \
+    ./configure \
         --prefix=/usr/local \
         --enable-shared \
         --disable-static \
@@ -38,36 +46,45 @@ RUN cd /tmp \
         --with-bzlib=yes \
         --with-lzma=yes \
         --without-perl \
-        --disable-docs \
-    && make -j$(nproc) \
-    && make install \
-    && ldconfig /usr/local/lib \
-    && cd /tmp \
-    && rm -rf ImageMagick-7.1.1-39*
-
-# Compile imagick PHP extension
-RUN cd /tmp \
-    && wget https://github.com/Imagick/imagick/archive/refs/heads/master.zip \
-    && unzip master.zip \
-    && cd imagick-master \
-    && phpize \
-    && ./configure --with-imagick=/usr/local \
-    && make -j$(nproc) \
-    && make install \
-    && docker-php-ext-enable imagick \
-    && cd /tmp \
-    && rm -rf imagick-master* master.zip \
-    && rm -rf /tmp/pear \
-    && apk del .build-deps
+        --disable-docs; \
+    make -j"$(nproc)"; \
+    make install; \
+    ldconfig /usr/local/lib; \
+    cd /tmp; \
+    rm -rf ImageMagick-7.1.1-39*; \
+    \
+    wget https://github.com/Imagick/imagick/archive/refs/heads/master.zip; \
+    unzip master.zip; \
+    cd imagick-master; \
+    phpize; \
+    ./configure --with-imagick=/usr/local; \
+    make -j"$(nproc)"; \
+    make install; \
+    docker-php-ext-enable imagick; \
+    cd /tmp; \
+    rm -rf imagick-master* master.zip; \
+    rm -rf /tmp/pear; \
+    \
+    wget https://github.com/jvoisin/snuffleupagus/archive/refs/tags/v0.14.0.zip -O snuffleupagus.zip; \
+    echo "d9e01c349d24f2d257d2dc09c8029c2aa19ef2d5a1d3104ace8dc084415ab1ffba45ed628a1b8004359ec3167b9186d6 /tmp/snuffleupagus.zip" | sha384sum -c; \
+    unzip -d /tmp /tmp/snuffleupagus.zip; \
+    docker-php-ext-configure /tmp/snuffleupagus-0.14.0/src --enable-snuffleupagus; \
+    docker-php-ext-install /tmp/snuffleupagus-0.14.0/src; \
+    mkdir -p /usr/local/etc/snuffleupagus; \
+    \
+    apk del --no-network .build-deps; \
+    rm -rf /tmp/* /var/cache/apk/* /usr/local/lib/*.la
 
 # Install Composer
-RUN cd /tmp \
-    && apk add --no-cache coreutils \
-    && wget https://github.com/composer/composer/releases/download/2.8.8/composer.phar -O ./composer.phar \
-    && echo "fb2bdaa0b59572c8b07b3b4d64af72bf223beaf62b4a8ffdfe5c863d28fdd08a0e2c006db19e0fb988b4f05be4a61e56 /tmp/composer.phar" | sha384sum -c \
-    && mv ./composer.phar /usr/local/bin/composer \
-    && chmod +x /usr/local/bin/composer \
-    && rm -rf /tmp/*
+RUN set -eux; \
+    apk add --no-cache --virtual .composer-deps coreutils; \
+    cd /tmp; \
+    wget https://github.com/composer/composer/releases/download/2.8.8/composer.phar -O ./composer.phar; \
+    echo "fb2bdaa0b59572c8b07b3b4d64af72bf223beaf62b4a8ffdfe5c863d28fdd08a0e2c006db19e0fb988b4f05be4a61e56 /tmp/composer.phar" | sha384sum -c; \
+    mv ./composer.phar /usr/local/bin/composer; \
+    chmod +x /usr/local/bin/composer; \
+    apk del --no-network .composer-deps; \
+    rm -rf /tmp/*
 
 # Configure PHP-FPM and Apache
 RUN sed -i "s/user = www-data/user = devuser/g" /usr/local/etc/php-fpm.d/www.conf \
@@ -78,16 +95,6 @@ RUN sed -i "s/user = www-data/user = devuser/g" /usr/local/etc/php-fpm.d/www.con
     && ln -sf /dev/stdout /var/log/apache2/access.log \
     && ln -sf /dev/stderr /var/log/apache2/error.log \
     && rm -f /etc/apache2/conf.d/ssl.conf
-
-# Install Snuffleupagus security extension
-RUN cd /tmp \
-    && wget https://github.com/jvoisin/snuffleupagus/archive/refs/tags/v0.11.0.zip -O snuffleupagus.zip \
-    && echo "ea9b6d5c662a89902cc078df467ea287243da6c49044da378691975bad77a7d420952caaee15c8877bc63d8eface3254 /tmp/snuffleupagus.zip" | sha384sum -c \
-    && unzip -d /tmp /tmp/snuffleupagus.zip \
-    && docker-php-ext-configure /tmp/snuffleupagus-0.11.0/src --enable-snuffleupagus \
-    && docker-php-ext-install /tmp/snuffleupagus-0.11.0/src \
-    && mkdir -p /usr/local/etc/snuffleupagus \
-    && rm -rf /tmp/* /var/cache/apk/*
 
 COPY httpd.conf /etc/apache2/httpd.conf
 COPY supervisor.ini /etc/supervisor.d/default.ini
